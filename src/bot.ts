@@ -66,121 +66,38 @@ function logError(context: string, error: any) {
 }
 
 /**
- * A flexible follow-up reply helper for plain title+description responses.
- * By default, ephemeral is true.
+ * safeReply: Immediately replies if not already replied; otherwise uses followUp.
+ * This function sends a response to the interaction.
  */
-async function followUpReply(
-  interaction: ChatInputCommandInteraction,
-  desc: string,
-  title?: string,
-  ephemeral: boolean = true
-) {
-  try {
-    if (!interaction.deferred && !interaction.replied) {
-      try {
-        console.log("followUpReply: deferring reply");
-        await interaction.deferReply({ ephemeral });
-      } catch (error: any) {
-        if (error.code === 10062) {
-          console.warn("followUpReply: Unknown interaction on deferReply, falling back to reply");
-          if (!interaction.replied) {
-            await interaction.reply({
-              embeds: [createEmbed({ title, description: desc })],
-              ephemeral,
-            });
-            return;
-          }
-        } else {
-          throw error;
-        }
-      }
-    }
-    console.log("followUpReply: sending followUp reply");
-    await interaction.followUp({
-      embeds: [createEmbed({ title, description: desc })],
-      ephemeral,
-    });
-  } catch (error) {
-    logError("followUpReply", error);
-  }
-}
-
-/**
- * A follow-up reply helper that accepts a full embed.
- * By default, ephemeral is true.
- */
-async function followUpReplyEmbed(
+async function safeReply(
   interaction: ChatInputCommandInteraction,
   embed: EmbedBuilder,
   ephemeral: boolean = true
 ) {
   try {
-    if (!interaction.deferred && !interaction.replied) {
-      try {
-        console.log("followUpReplyEmbed: deferring reply");
-        await interaction.deferReply({ ephemeral });
-      } catch (error: any) {
-        if (error.code === 10062) {
-          console.warn("followUpReplyEmbed: Unknown interaction on deferReply, falling back to reply");
-          if (!interaction.replied) {
-            await interaction.reply({
-              embeds: [embed],
-              ephemeral,
-            });
-            return;
-          }
-        } else {
-          throw error;
-        }
-      }
+    if (!interaction.replied) {
+      await interaction.reply({ embeds: [embed], ephemeral });
+    } else {
+      await interaction.followUp({ embeds: [embed], ephemeral });
     }
-    console.log("followUpReplyEmbed: sending followUp reply");
-    await interaction.followUp({
-      embeds: [embed],
-      ephemeral,
-    });
-  } catch (error) {
-    logError("followUpReplyEmbed", error);
+  } catch (error: any) {
+    if (error.code === 10062) {
+      console.warn("safeReply: Interaction expired, cannot send reply.");
+      return;
+    }
+    logError("safeReply", error);
   }
 }
 
 /**
- * Same as followUpReply but for button interactions.
+ * safeReplyEmbed: Same as safeReply.
  */
-async function followUpButtonReply(
-  interaction: ButtonInteraction,
-  desc: string,
-  title?: string,
+async function safeReplyEmbed(
+  interaction: ChatInputCommandInteraction,
+  embed: EmbedBuilder,
   ephemeral: boolean = true
 ) {
-  try {
-    if (!interaction.deferred && !interaction.replied) {
-      try {
-        console.log("followUpButtonReply: deferring reply");
-        await interaction.deferReply({ ephemeral });
-      } catch (error: any) {
-        if (error.code === 10062) {
-          console.warn("followUpButtonReply: Unknown interaction on deferReply, falling back to reply");
-          if (!interaction.replied) {
-            await interaction.reply({
-              embeds: [createEmbed({ title, description: desc })],
-              ephemeral,
-            });
-            return;
-          }
-        } else {
-          throw error;
-        }
-      }
-    }
-    console.log("followUpButtonReply: sending followUp reply");
-    await interaction.followUp({
-      embeds: [createEmbed({ title, description: desc })],
-      ephemeral,
-    });
-  } catch (error) {
-    logError("followUpButtonReply", error);
-  }
+  await safeReply(interaction, embed, ephemeral);
 }
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -240,7 +157,7 @@ async function announce(guildId: string): Promise<boolean> {
   }
 }
 
-// Update the leaderboard message with extra logging
+// Update the leaderboard message (similar to the announcements system)
 async function updateLeaderboard(guildId: string): Promise<boolean> {
   try {
     console.log("updateLeaderboard: Looking up server with guildId", guildId);
@@ -269,8 +186,7 @@ async function updateLeaderboard(guildId: string): Promise<boolean> {
     for (let i = 0; i < server.members.length; i++) {
       const member = server.members[i];
       if (member.user) {
-        const userId = member.user.id;
-        leaderboardText += `${i + 1}. <@${userId}> - ${member.points || 0} point(s)\n`;
+        leaderboardText += `${i + 1}. <@${member.user.id}> - ${member.points || 0} point(s)\n`;
       }
     }
     const embed = createEmbed({ title: "Daily Problem Leaderboard", description: leaderboardText });
@@ -345,7 +261,7 @@ async function getRandomProblemUrl(): Promise<[string, string] | null> {
 }
 
 /**
- * getTotalUserCount: Summation of each guild's memberCount
+ * getTotalUserCount: Summation of each guild's memberCount.
  */
 function getTotalUserCount(): number {
   let totalUsers = 0;
@@ -416,11 +332,11 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         const problemId = parts[2];
         const [contestId, problemIndex] = problemId.split('/');
         if (!cfUsername) {
-          return await followUpButtonReply(buttonInteraction, 'Invalid Codeforces username.');
+          return await safeReply(buttonInteraction as unknown as ChatInputCommandInteraction, createEmbed({ description: 'Invalid Codeforces username.' }));
         }
         const lastSubmission = await lastcfSubmission(cfUsername);
         if (!lastSubmission) {
-          return await followUpButtonReply(buttonInteraction, 'Could not retrieve your last submission. Please try again later.');
+          return await safeReply(buttonInteraction as unknown as ChatInputCommandInteraction, createEmbed({ description: 'Could not retrieve your last submission. Please try again later.' }));
         }
         if (
           lastSubmission.problem.contestId.toString() === contestId &&
@@ -428,9 +344,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           lastSubmission.verdict === 'COMPILATION_ERROR'
         ) {
           await new User({ id: buttonInteraction.user.id, cfUsername, guildId: buttonInteraction.guildId! }).save();
-          return await followUpButtonReply(buttonInteraction, `You have now signed in!`);
+          return await safeReply(buttonInteraction as unknown as ChatInputCommandInteraction, createEmbed({ description: `You have now signed in!` }));
         } else {
-          return await followUpButtonReply(buttonInteraction, `Your last submission does not match the problem or it wasn't a compilation error. Please try again.`);
+          return await safeReply(buttonInteraction as unknown as ChatInputCommandInteraction, createEmbed({ description: `Your last submission does not match the problem or it wasn't a compilation error. Please try again.` }));
         }
       }
       return;
@@ -439,7 +355,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     // Handle slash commands
     if (interaction.isChatInputCommand()) {
       if (!interaction.guildId) {
-        return await followUpReply(interaction as ChatInputCommandInteraction, "This command can only be used in a server.", "Error");
+        return await safeReply(interaction as ChatInputCommandInteraction, createEmbed({ title: "Error", description: "This command can only be used in a server." }));
       }
       const cmdInteraction = interaction as ChatInputCommandInteraction;
       const { commandName } = cmdInteraction;
@@ -457,7 +373,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           await cmdInteraction.editReply({ embeds: [embed] });
         } catch (error) {
           logError("ping", error);
-          await followUpReply(cmdInteraction, "An error occurred while executing the ping command.");
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while executing the ping command." }));
         }
       }
 
@@ -465,11 +381,11 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         try {
           const cfUsername = cmdInteraction.options.getString('handle');
           if (!cfUsername) {
-            return await followUpReply(cmdInteraction, 'Please provide a Codeforces username.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'Please provide a Codeforces username.' }));
           }
           const problemResult = await getRandomProblemUrl();
           if (!problemResult) {
-            return await followUpReply(cmdInteraction, 'Sorry, I could not fetch a random problem at the moment.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'Sorry, I could not fetch a random problem at the moment.' }));
           }
           const [url, problemId] = problemResult;
           const embed = createEmbed({
@@ -494,7 +410,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           });
         } catch (error) {
           logError("login", error);
-          await followUpReply(cmdInteraction, "An error occurred while processing your login.");
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while processing your login." }));
         }
       }
 
@@ -502,62 +418,59 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         try {
           const user = await User.findOne({ id: cmdInteraction.user.id });
           if (!user) {
-            return await followUpReply(cmdInteraction, 'You are not logged in. Please use /login to log in.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'You are not logged in. Please use /login to log in.' }));
           }
           const server = await Server.findOne({ daily: { $exists: true }, guildId: cmdInteraction.guildId }).populate("members.user");
           if (!server || !server.daily) {
-            return await followUpReply(cmdInteraction, 'No server found with a daily problem.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'No server found with a daily problem.' }));
           }
           const dailyProblemId = server.daily;
           const solved = await hasSolvedProblem(user.cfUsername, dailyProblemId);
           if (solved === null) {
-            return await followUpReply(cmdInteraction, 'There was an error checking your submissions. Please try again later.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'There was an error checking your submissions. Please try again later.' }));
           }
           const member = server.members.find((m: any) => m.user && m.user.id === user.id);
+          let replyEmbed: EmbedBuilder;
           if (member && member.lastSubmitted === dailyProblemId) {
-            return await followUpReply(cmdInteraction, 'You have already submitted your solution for this problem today.');
-          }
-          if (!member) {
-            server.members.push({
-              user: user._id,
-              points: solved ? 1 : 0,
-              lastSubmitted: solved ? dailyProblemId : null,
-            });
-            await server.save();
-            return solved
-              ? await followUpReply(cmdInteraction, 'Congratulations! You have solved the daily problem and earned 1 point.')
-              : await followUpReply(cmdInteraction, 'You have not solved the daily problem yet. Keep trying!');
-          } else if (member && solved && member.lastSubmitted !== dailyProblemId) {
-            member.points += 1;
-            member.lastSubmitted = dailyProblemId;
-            await server.save();
-            const leaderboardUpdated = await updateLeaderboard(cmdInteraction.guildId);
-            if (!leaderboardUpdated) {
-              console.error("check command: Failed to update leaderboard.");
-            }
-            return await followUpReply(cmdInteraction, 'Congratulations! You have solved the daily problem and earned 1 point.');
+            replyEmbed = createEmbed({ description: 'You have already submitted your solution for this problem today.' });
           } else {
-            return await followUpReply(cmdInteraction, 'You have not solved the daily problem yet. Keep trying!');
+            if (!member) {
+              server.members.push({
+                user: user._id,
+                points: solved ? 1 : 0,
+                lastSubmitted: solved ? dailyProblemId : null,
+              });
+            } else {
+              member.points += 1;
+              member.lastSubmitted = dailyProblemId;
+            }
+            await server.save();
+            replyEmbed = solved
+              ? createEmbed({ description: 'Congratulations! You have solved the daily problem and earned 1 point.' })
+              : createEmbed({ description: 'You have not solved the daily problem yet. Keep trying!' });
           }
+          // Update leaderboard asynchronously (do not block the interaction reply)
+          updateLeaderboard(cmdInteraction.guildId).catch(err => console.error("updateLeaderboard error:", err));
+          return await safeReply(cmdInteraction, replyEmbed);
         } catch (error) {
           logError("check", error);
-          await followUpReply(cmdInteraction, "An error occurred while checking your solution.");
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while checking your solution." }));
         }
       }
 
       else if (commandName === 'setdailyproblem') {
         try {
           if (!cmdInteraction.memberPermissions || !cmdInteraction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-            return await followUpReply(cmdInteraction, 'You do not have permission to set the daily problem.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'You do not have permission to set the daily problem.' }));
           }
           const problemUrl = cmdInteraction.options.getString('problem_url');
           if (!problemUrl) {
-            return await followUpReply(cmdInteraction, 'Please provide a valid Codeforces problem URL.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'Please provide a valid Codeforces problem URL.' }));
           }
           const regex = /\/(?:contest|problemset)\/problem\/(\d+)\/([A-Z0-9]+)/;
           const match = problemUrl.match(regex);
           if (!match) {
-            return await followUpReply(cmdInteraction, 'Invalid problem URL format. Please provide a valid Codeforces problem URL.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'Invalid problem URL format. Please provide a valid Codeforces problem URL.' }));
           }
           const contestId = match[1];
           const index = match[2];
@@ -578,7 +491,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           }
           const isValidProblem = await validateProblemUrl(contestId, index);
           if (!isValidProblem) {
-            return await followUpReply(cmdInteraction, 'The provided problem URL is not valid. Please provide a valid Codeforces problem URL.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'The provided problem URL is not valid. Please provide a valid Codeforces problem URL.' }));
           }
           let server = await Server.findOne({ guildId: cmdInteraction.guildId });
           if (!server) {
@@ -605,21 +518,21 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           if (warnings.length > 0) {
             replyMsg += `\nWarning: ${warnings.join(" ")}`;
           }
-          return await followUpReply(cmdInteraction, replyMsg);
+          return await safeReply(cmdInteraction, createEmbed({ description: replyMsg }));
         } catch (error) {
           logError("setdailyproblem", error);
-          await followUpReply(cmdInteraction, "An error occurred while setting the daily problem.");
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while setting the daily problem." }));
         }
       }
 
       else if (commandName === 'setleaderboardchannel') {
         try {
           if (!cmdInteraction.memberPermissions || !cmdInteraction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-            return await followUpReply(cmdInteraction, 'You do not have permission to set the leaderboard channel.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'You do not have permission to set the leaderboard channel.' }));
           }
           const channel = cmdInteraction.options.getChannel('channel');
           if (!channel || !('send' in channel)) {
-            return await followUpReply(cmdInteraction, 'Please provide a valid text channel.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'Please provide a valid text channel.' }));
           }
           let server = await Server.findOne({ guildId: cmdInteraction.guildId });
           if (!server) {
@@ -631,21 +544,21 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             server.channelId = channel.id;
           }
           await server.save();
-          return await followUpReply(cmdInteraction, `Leaderboard channel has been set to <#${channel.id}>`);
+          return await safeReply(cmdInteraction, createEmbed({ description: `Leaderboard channel has been set to <#${channel.id}>` }));
         } catch (error) {
           logError("setleaderboardchannel", error);
-          await followUpReply(cmdInteraction, "An error occurred while setting the leaderboard channel.");
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while setting the leaderboard channel." }));
         }
       }
 
       else if (commandName === 'setannouncementchannel') {
         try {
           if (!cmdInteraction.memberPermissions || !cmdInteraction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-            return await followUpReply(cmdInteraction, 'You do not have permission to set the announcement channel.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'You do not have permission to set the announcement channel.' }));
           }
           const channel = cmdInteraction.options.getChannel('channel');
           if (!channel || !('send' in channel)) {
-            return await followUpReply(cmdInteraction, 'Please provide a valid text channel.');
+            return await safeReply(cmdInteraction, createEmbed({ description: 'Please provide a valid text channel.' }));
           }
           let server = await Server.findOne({ guildId: cmdInteraction.guildId });
           if (!server) {
@@ -657,10 +570,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             server.announcementChannelId = channel.id;
           }
           await server.save();
-          return await followUpReply(cmdInteraction, `Announcement channel has been set to <#${channel.id}>`);
+          return await safeReply(cmdInteraction, createEmbed({ description: `Announcement channel has been set to <#${channel.id}>` }));
         } catch (error) {
           logError("setannouncementchannel", error);
-          await followUpReply(cmdInteraction, "An error occurred while setting the announcement channel.");
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while setting the announcement channel." }));
         }
       }
 
@@ -684,13 +597,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
               { name: "/setdailyproblem", value: "Set the daily Codeforces problem. (Admin only)" },
               { name: "/setleaderboardchannel", value: "Set the channel for the leaderboard. (Admin only)" },
               { name: "/setannouncementchannel", value: "Set the channel for announcements. (Admin only)" },
-              { name: "/botinfo", value: "Show info about this bot." }
+              { name: "/botinfo", value: "Show info about this bot." },
+              { name: "/leaderboard", value: "Display the current leaderboard." }
             );
-          // Public help message
-          return await followUpReplyEmbed(cmdInteraction, helpEmbed, false);
+          return await safeReplyEmbed(cmdInteraction, helpEmbed, false);
         } catch (error) {
           logError("help", error);
-          await followUpReply(cmdInteraction, "An error occurred while displaying help information.", undefined, false);
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while displaying help information." }), undefined, false);
         }
       }
 
@@ -707,8 +620,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           const serverCount = client.guilds.cache.size;
           const userCount = getTotalUserCount();
           const apiLatency = Math.round(client.ws.ping);
+          const nodeVersion = process.version;
+          const usedMemMB = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
   
-          // Create an embed with at least 7 fields
           const botinfoEmbed = new EmbedBuilder()
             .setTitle("Bot Info")
             .setColor(DEFAULT_EMBED_CONFIG.color)
@@ -722,16 +636,45 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
               { name: "Uptime", value: uptimeFormatted, inline: true },
               { name: "Servers", value: serverCount.toString(), inline: true },
               { name: "Users", value: userCount.toString(), inline: true },
-              { name: "Node Version", value: process.version, inline: true },
-              { name: "Memory Usage", value: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`, inline: true },
+              { name: "Node Version", value: nodeVersion, inline: true },
+              { name: "Memory Usage", value: `${usedMemMB} MB`, inline: true },
               { name: "API Latency", value: `${apiLatency} ms`, inline: true },
               { name: "Discord.js Version", value: discordVersion, inline: true }
             );
   
-          return await followUpReplyEmbed(cmdInteraction, botinfoEmbed, false);
+          return await safeReplyEmbed(cmdInteraction, botinfoEmbed, false);
         } catch (error) {
           logError("botinfo", error);
-          await followUpReply(cmdInteraction, "An error occurred while fetching bot info.", undefined, false);
+          await safeReply(cmdInteraction, createEmbed({ description: "An error occurred while fetching bot info." }), undefined, false);
+        }
+      }
+
+      /**
+       * New /leaderboard command: Publicly displays the current leaderboard.
+       */
+      else if (commandName === 'leaderboard') {
+        try {
+          const server = await Server.findOne({ guildId: cmdInteraction.guildId }).populate("members.user");
+          if (!server || !server.daily) {
+            return await cmdInteraction.reply({ embeds: [createEmbed({ description: "No daily problem is set for this server." })], ephemeral: false });
+          }
+          if (!server.members || server.members.length === 0) {
+            return await cmdInteraction.reply({ embeds: [createEmbed({ title: "Leaderboard", description: "No members have solved the daily problem yet." })], ephemeral: false });
+          }
+          // Sort members and build leaderboard text
+          server.members.sort((a: any, b: any) => (b.points || 0) - (a.points || 0));
+          let leaderboardText = "**Leaderboard for Daily Problem**\n\n";
+          for (let i = 0; i < server.members.length; i++) {
+            const member = server.members[i];
+            if (member.user) {
+              leaderboardText += `${i + 1}. <@${member.user.id}> - ${member.points || 0} point(s)\n`;
+            }
+          }
+          const leaderboardEmbed = createEmbed({ title: "Daily Problem Leaderboard", description: leaderboardText });
+          return await cmdInteraction.reply({ embeds: [leaderboardEmbed], ephemeral: false });
+        } catch (error) {
+          logError("leaderboard", error);
+          return await safeReplyEmbed(cmdInteraction, createEmbed({ title: "Leaderboard", description: "An error occurred while fetching the leaderboard." }), false);
         }
       }
     }

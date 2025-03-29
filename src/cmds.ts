@@ -69,11 +69,14 @@ const commands = [
   {
     name: 'botinfo',
     description: 'Get information about the bot, including uptime and stats.',
-    
   },
   {
     name: 'help',
     description: 'Show help information for the bot!',
+  },
+  {
+    name: 'leaderboard',
+    description: 'Display the current leaderboard publicly.',
   },
 ];
 
@@ -82,8 +85,11 @@ const rest = new REST({ version: '10' }).setToken(token);
 async function deployCommands() {
   try {
     console.log('Started refreshing application (/) commands.');
-    const data = await rest.put(Routes.applicationCommands(applicationId), { body: commands });
-    console.log(`Successfully reloaded application (/) commands. Total commands: ${(Array.isArray(data) ? data.length : 0)}`);
+    const data = await rest.put(
+      Routes.applicationCommands(applicationId),
+      { body: commands }
+    );
+    console.log(`Successfully reloaded application (/) commands. Total commands: ${Array.isArray(data) ? data.length : 0}`);
   } catch (error: any) {
     console.error('Error deploying commands:');
     if (error.code) {
