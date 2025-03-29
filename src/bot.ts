@@ -183,12 +183,19 @@ async function updateLeaderboard(guildId: string): Promise<boolean> {
       return false;
     }
     let leaderboardText = "**Leaderboard for Daily Problem**\n\n";
+    let currentRank = 0;
+    let lastPoints = -1;
     for (let i = 0; i < server.members.length; i++) {
       const member = server.members[i];
       if (member.user) {
-        leaderboardText += `${i + 1}. <@${member.user.id}> - ${member.points || 0} point(s)\n`;
+        if (member.points !== lastPoints) {
+          currentRank = i + 1;
+          lastPoints = member.points;
+        }
+        leaderboardText += `${currentRank}. <@${member.user.id}> - ${member.points || 0} point(s)\n`;
       }
     }
+
     const embed = createEmbed({ title: "Daily Problem Leaderboard", description: leaderboardText });
     if (!server.messageId) {
       console.log("updateLeaderboard: No previous leaderboard message; sending new one.");
@@ -664,12 +671,19 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           // Sort members and build leaderboard text
           server.members.sort((a: any, b: any) => (b.points || 0) - (a.points || 0));
           let leaderboardText = "**Leaderboard for Daily Problem**\n\n";
+          let currentRank = 0;
+          let lastPoints = -1;
           for (let i = 0; i < server.members.length; i++) {
             const member = server.members[i];
             if (member.user) {
-              leaderboardText += `${i + 1}. <@${member.user.id}> - ${member.points || 0} point(s)\n`;
+              if (member.points !== lastPoints) {
+                currentRank = i + 1;
+                lastPoints = member.points;
+              }
+              leaderboardText += `${currentRank}. <@${member.user.id}> - ${member.points || 0} point(s)\n`;
             }
           }
+      
           const leaderboardEmbed = createEmbed({ title: "Daily Problem Leaderboard", description: leaderboardText });
           return await cmdInteraction.reply({ embeds: [leaderboardEmbed], ephemeral: false });
         } catch (error) {
