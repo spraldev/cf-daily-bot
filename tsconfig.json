@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    /* Language and module features */
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    
+    /* Directory settings */
+    "rootDir": "src",
+    "outDir": "dist",
+    
+    /* Code quality and type checking */
+    "strict": true,                      // enables all strict type checking options
+    "skipLibCheck": true,               // skip .d.ts checking for faster builds
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    
+    /* Build speed improvements */
+    "incremental": true,                // speeds up subsequent builds
+    "isolatedModules": true,            // recommended for build tooling & ESNext
+    
+    /* Source maps / debugging */
+    "sourceMap": true,
+    "inlineSources": true
+  },
+  "include": [
+    "src/**/*",
+    // If you have custom type definitions in a types/ folder:
+    // "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
