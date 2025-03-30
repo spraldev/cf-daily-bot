@@ -474,13 +474,25 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           if (!problemUrl) {
             return await safeReply(cmdInteraction, createEmbed({ description: 'Please provide a valid Codeforces problem URL.' }));
           }
-          const regex = /\/(?:contest|problemset)\/problem\/(\d+)\/([A-Z0-9]+)/;
-          const match = problemUrl.match(regex);
+          // Relaxed regex to allow extra trailing characters if needed:
+          const regex = /^(?:https?:\/\/)?(?:www\.)?codeforces\.com\/(?:contest|problemset\/problem)\/(\d+)(?:\/problem)?\/([A-Z]\d*)(?:\/.*)?$/i;
+          let match = problemUrl.trim().replace(regex, '$1/$2').toString().split('/');
+
+          console.log("match", match);
+
+
+
           if (!match) {
+
             return await safeReply(cmdInteraction, createEmbed({ description: 'Invalid problem URL format. Please provide a valid Codeforces problem URL.' }));
           }
-          const contestId = match[1];
-          const index = match[2];
+
+          const contestId = match[0];
+          const index = match[1];
+
+          console.log("contestId", contestId);
+          console.log("index", index);
+
           async function validateProblemUrl(contestId: string, index: string): Promise<boolean> {
             try {
               const response = await axios.get(`https://codeforces.com/api/problemset.problems`);
@@ -496,6 +508,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
               return false;
             }
           }
+
           const isValidProblem = await validateProblemUrl(contestId, index);
           if (!isValidProblem) {
             return await safeReply(cmdInteraction, createEmbed({ description: 'The provided problem URL is not valid. Please provide a valid Codeforces problem URL.' }));
